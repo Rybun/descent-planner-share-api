@@ -1,0 +1,20 @@
+services:
+  descent-share:
+    build: .
+    container_name: descent-share
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+      - PORT=3015
+      - DATA_DIR=/data
+      - MAIN_APP_URL=https://descent.rybun.rocks
+    volumes:
+      - ${DATA_DIR}/descent-share:/data
+    ports:
+      - "127.0.0.1:3015:3015"
+    networks:
+      - lb_network
+
+networks:
+  lb_network:
+    external: true
