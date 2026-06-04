@@ -114,20 +114,14 @@ app.post('/api/share', (req, res) => {
   }
 });
 
-// ── POST /api/share/:id — añadir snapshot ─────────────────────────────────────
+// ── POST /api/share/:id — añadir snapshot (abierto: cualquiera con el enlace) ──
 app.post('/api/share/:id', (req, res) => {
   try {
     const { id } = req.params;
     if (!ID_RE.test(id)) return res.status(400).json({ error: 'invalid id' });
     if (!fs.existsSync(shareDir(id))) return res.status(404).json({ error: 'not found' });
 
-    const meta  = readMeta(id);
-    const token = req.headers['x-write-token'] || '';
-    if (!token) return res.status(401).json({ error: 'write token required' });
-    if (crypto.createHash('sha256').update(token).digest('hex') !== meta.write_token_hash) {
-      return res.status(403).json({ error: 'invalid token' });
-    }
-
+    const meta = readMeta(id);
     const { save, saveMeta, actionHistory, originalState, label } = req.body || {};
     if (!save || typeof save !== 'object') return res.status(400).json({ error: 'save required' });
 
