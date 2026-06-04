@@ -50,7 +50,7 @@ function safeMeta(meta) {
 app.post('/api/share', (req, res) => {
   try {
     ensureData();
-    const { save, saveMeta, actionHistory, label, private: isPrivate } = req.body || {};
+    const { save, saveMeta, actionHistory, originalState, label, private: isPrivate } = req.body || {};
     if (!save || typeof save !== 'object') {
       return res.status(400).json({ error: 'save required' });
     }
@@ -65,24 +65,46 @@ app.post('/api/share', (req, res) => {
     const now = new Date().toISOString();
     fs.mkdirSync(shareDir(id));
 
+    // Si hay cambios (actionHistory no vacío + originalState), crear dos versiones:
+    // versión 0 = estado original (sin cambios), versión 1 = estado actual (con cambios)
+    const hasChanges = Array.isArray(actionHistory) && actionHistory.length > 0
+      && originalState && typeof originalState === 'object';
+
+    if (hasChanges) {
+      fs.writeFileSync(
+        path.join(shareDir(id), '0.json'),
+        JSON.stringify({ save: originalState, saveMeta: saveMeta || null, actionHistory: [], originalState })
+      );
+      fs.writeFileSync(
+        path.join(shareDir(id), '1.json'),
+        JSON.stringify({ save, saveMeta: saveMeta || null, actionHistory: actionHistory || [], originalState })
+      );
+    } else {
+      fs.writeFileSync(
+        path.join(shareDir(id), '0.json'),
+        JSON.stringify({ save, saveMeta: saveMeta || null, actionHistory: actionHistory || [], originalState: originalState || save })
+      );
+    }
+
     const meta = {
       id,
       created_at:       now,
       label:            label || saveMeta?.partyName || null,
       private:          isPrivate === true,
       write_token_hash: crypto.createHash('sha256').update(writeToken).digest('hex'),
-      snapshot_count:   1,
-      snapshots:        [{ n: 0, label: label || null, created_at: now }],
+      snapshot_count:   hasChanges ? 2 : 1,
+      snapshots:        hasChanges
+        ? [
+            { n: 0, label: null,          created_at: now },
+            { n: 1, label: label || null, created_at: now },
+          ]
+        : [{ n: 0, label: label || null, created_at: now }],
       heroes:           (save.heroes || []).map(h => h.id).filter(Boolean),
       act:              saveMeta?.act ?? 0,
       partyName:        saveMeta?.partyName || null,
       actionCount:      (actionHistory || []).length,
     };
 
-    fs.writeFileSync(
-      path.join(shareDir(id), '0.json'),
-      JSON.stringify({ save, saveMeta: saveMeta || null, actionHistory: actionHistory || [] })
-    );
     writeMeta(id, meta);
 
     res.json({ id, write_token: writeToken, url: `https://d.rybun.rocks/${id}` });
@@ -106,7 +128,7 @@ app.post('/api/share/:id', (req, res) => {
       return res.status(403).json({ error: 'invalid token' });
     }
 
-    const { save, saveMeta, actionHistory, label } = req.body || {};
+    const { save, saveMeta, actionHistory, originalState, label } = req.body || {};
     if (!save || typeof save !== 'object') return res.status(400).json({ error: 'save required' });
 
     const n   = meta.snapshot_count;
@@ -114,7 +136,7 @@ app.post('/api/share/:id', (req, res) => {
 
     fs.writeFileSync(
       path.join(shareDir(id), `${n}.json`),
-      JSON.stringify({ save, saveMeta: saveMeta || null, actionHistory: actionHistory || [] })
+      JSON.stringify({ save, saveMeta: saveMeta || null, actionHistory: actionHistory || [], originalState: originalState || null })
     );
 
     meta.snapshot_count = n + 1;
