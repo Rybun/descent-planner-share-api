@@ -50,7 +50,7 @@ function safeMeta(meta) {
 app.post('/api/share', (req, res) => {
   try {
     ensureData();
-    const { save, saveMeta, actionHistory, originalState, label, private: isPrivate } = req.body || {};
+    const { save, saveMeta, actionHistory, originalState, rawSaveContent, heroLoadouts, label, private: isPrivate } = req.body || {};
     if (!save || typeof save !== 'object') {
       return res.status(400).json({ error: 'save required' });
     }
@@ -65,6 +65,13 @@ app.post('/api/share', (req, res) => {
     const now = new Date().toISOString();
     fs.mkdirSync(shareDir(id));
 
+    // rawSaveContent (el .SAV tal cual se subió) se guarda en ambas versiones
+    // para que, al abrir el enlace, el cliente pueda reinterpretarlo con el
+    // parser vigente EN ESE MOMENTO (no con el que existía al compartir).
+    // save/saveMeta/originalState se conservan igualmente, solo como vista
+    // previa para el feed público — no se usan para reconstruir el estado si
+    // rawSaveContent está presente.
+
     // Si hay cambios (actionHistory no vacío + originalState), crear dos versiones:
     // versión 0 = estado original (sin cambios), versión 1 = estado actual (con cambios)
     const hasChanges = Array.isArray(actionHistory) && actionHistory.length > 0
@@ -73,16 +80,16 @@ app.post('/api/share', (req, res) => {
     if (hasChanges) {
       fs.writeFileSync(
         path.join(shareDir(id), '0.json'),
-        JSON.stringify({ save: originalState, saveMeta: saveMeta || null, actionHistory: [], originalState })
+        JSON.stringify({ save: originalState, saveMeta: saveMeta || null, actionHistory: [], originalState, rawSaveContent: rawSaveContent || null, heroLoadouts: heroLoadouts || {} })
       );
       fs.writeFileSync(
         path.join(shareDir(id), '1.json'),
-        JSON.stringify({ save, saveMeta: saveMeta || null, actionHistory: actionHistory || [], originalState })
+        JSON.stringify({ save, saveMeta: saveMeta || null, actionHistory: actionHistory || [], originalState, rawSaveContent: rawSaveContent || null, heroLoadouts: heroLoadouts || {} })
       );
     } else {
       fs.writeFileSync(
         path.join(shareDir(id), '0.json'),
-        JSON.stringify({ save, saveMeta: saveMeta || null, actionHistory: actionHistory || [], originalState: originalState || save })
+        JSON.stringify({ save, saveMeta: saveMeta || null, actionHistory: actionHistory || [], originalState: originalState || save, rawSaveContent: rawSaveContent || null, heroLoadouts: heroLoadouts || {} })
       );
     }
 
@@ -122,7 +129,7 @@ app.post('/api/share/:id', (req, res) => {
     if (!fs.existsSync(shareDir(id))) return res.status(404).json({ error: 'not found' });
 
     const meta = readMeta(id);
-    const { save, saveMeta, actionHistory, originalState, label } = req.body || {};
+    const { save, saveMeta, actionHistory, originalState, rawSaveContent, heroLoadouts, label } = req.body || {};
     if (!save || typeof save !== 'object') return res.status(400).json({ error: 'save required' });
 
     const n   = meta.snapshot_count;
@@ -130,7 +137,7 @@ app.post('/api/share/:id', (req, res) => {
 
     fs.writeFileSync(
       path.join(shareDir(id), `${n}.json`),
-      JSON.stringify({ save, saveMeta: saveMeta || null, actionHistory: actionHistory || [], originalState: originalState || null })
+      JSON.stringify({ save, saveMeta: saveMeta || null, actionHistory: actionHistory || [], originalState: originalState || null, rawSaveContent: rawSaveContent || null, heroLoadouts: heroLoadouts || {} })
     );
 
     meta.snapshot_count = n + 1;
